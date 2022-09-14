@@ -1,12 +1,14 @@
 from argparse import ArgumentError
 import ssl
-from django.db.models import Avg
+from django.db.models import Avg, Count
 from datetime import timedelta, datetime
 from receiver.models import Data, Measurement
 import paho.mqtt.client as mqtt
 import schedule
 import time
 from django.conf import settings
+import numpy as np
+from scipy import stats
 
 client = mqtt.Client(settings.MQTT_USER_PUB)
 
@@ -48,7 +50,7 @@ def analyze_data():
         if item["check_value"] > max_value or item["check_value"] < min_value:
             alert = True
 
-        if alert:
+        if alert and variable!='lum':
             message = "ALERT {} {} {}".format(variable, min_value, max_value)
             topic = '{}/{}/{}/{}/in'.format(country, state, city, user)
             print(datetime.now(), "Sending alert to {} {}".format(topic, variable))
@@ -57,6 +59,40 @@ def analyze_data():
 
     print(len(aggregation), "dispositivos revisados")
     print(alerts, "alertas enviadas")
+
+def illuminance_process():
+
+    print("Calculando iluminación...")
+
+    try:
+        data = Data.objects.filter(measurement__name='lum').latest('base_time')
+        data1 = data.select_related('station', 'measurement') \
+                .select_related('station__user', 'station__location') \
+                .select_related('station__location__city', 'station__location__state',
+                                'station__location__country') \
+                .values('station__user__username',
+                        'measurement__name',
+                        'station__location__city__name',
+                        'station__location__state__name',
+                        'station__location__country__name')
+        for item in data1:
+            country = item['station__location__country__name']
+            state = item['station__location__state__name']
+            city = item['station__location__city__name']
+            user = item['station__user__username']
+
+            X = [0,1,2,3,4,5,6,7,8,9]
+            Y = data1[:10]['measurement']
+            slope, intercept, r_value, p_value, std_err = stats.linregress(X, Y)
+            if (slope < 0):
+                message = "ACTION lum U"
+            else:
+                message = "ACTION lum D"
+            topic = '{}/{}/{}/{}/in'.format(country, state, city, user)
+            print(datetime.now(), "Sending action to {} lum".format(topic))
+            client.publish(topic, message)
+    except:
+        print('No hay datos relacionados a la iluminación')
 
 
 def on_connect(client, userdata, flags, rc):
@@ -105,7 +141,7 @@ def start_cron():
     Inicia el cron que se encarga de ejecutar la función analyze_data cada 5 minutos.
     '''
     print("Iniciando cron...")
-    schedule.every(5).minutes.do(analyze_data)
+    schedule.every(1).minutes.do(analyze_data)
     print("Servicio de control iniciado")
     while 1:
         schedule.run_pending()
