@@ -9,6 +9,7 @@ import time
 from django.conf import settings
 import numpy as np
 from scipy import stats
+from django.utils import timezone
 
 client = mqtt.Client(settings.MQTT_USER_PUB)
 
@@ -65,7 +66,7 @@ def illuminance_process():
     print("Calculando iluminación...")
 
     try:
-        data = Data.objects.filter(measurement__name='lum').latest('base_time')
+        data = Data.objects.filter(measurement__name='lum')
         data1 = data.select_related('station', 'measurement') \
                 .select_related('station__user', 'station__location') \
                 .select_related('station__location__city', 'station__location__state',
@@ -76,13 +77,17 @@ def illuminance_process():
                         'station__location__state__name',
                         'station__location__country__name')
         for item in data1:
+            now = timezone.now()
+            now = datetime(now.year,now.month,now.day,now.hour)-timedelta(hours=5)
+            data2 = Data.objects.all().filter(measurement__name='lum',station__user__username=item['station__user__username'],baste_time__gte=now)
             country = item['station__location__country__name']
             state = item['station__location__state__name']
             city = item['station__location__city__name']
             user = item['station__user__username']
 
+            values = data2[0].values
             X = [0,1,2,3,4,5,6,7,8,9]
-            Y = data1[:10]['measurement']
+            Y = values[-10:]
             slope, intercept, r_value, p_value, std_err = stats.linregress(X, Y)
             if (slope < 0):
                 message = "ACTION lum U"
