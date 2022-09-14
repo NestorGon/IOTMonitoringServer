@@ -79,7 +79,7 @@ def illuminance_process():
         for item in data1:
             now = timezone.now()
             now = datetime(now.year,now.month,now.day,now.hour)-timedelta(hours=5)
-            data2 = Data.objects.all().filter(measurement__name='lum',station__user__username=item['station__user__username'],baste_time__gte=now)
+            data2 = Data.objects.all().filter(measurement__name='lum',station__user__username=item['station__user__username'],base_time__gte=now)
             country = item['station__location__country__name']
             state = item['station__location__state__name']
             city = item['station__location__city__name']
